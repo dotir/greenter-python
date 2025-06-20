@@ -37,7 +37,8 @@ def test_basic_models():
         company = Company(
             ruc="20123456789",
             razon_social="EMPRESA EJEMPLO S.A.C.",
-            address=address
+            address=address,
+            nombre_comercial="EMPRESA EJEMPLO S.A.C."
         )
         
         client = Client(
@@ -122,7 +123,11 @@ def test_xml_generation():
         from datetime import datetime
         
         # Crear objetos mínimos
-        company = Company(ruc="20123456789", razon_social="TEST COMPANY")
+        company = Company(
+            ruc="20123456789", 
+            razon_social="TEST COMPANY",
+            nombre_comercial="TEST COMPANY"
+        )
         client = Client(tipo_doc="6", num_doc="20987654321", rzn_social="TEST CLIENT")
         
         invoice = Invoice(

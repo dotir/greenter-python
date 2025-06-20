@@ -12,6 +12,7 @@ from .core.models.document_interface import DocumentInterface
 from .core.models.sale import BaseSale
 from .xml.builder import XmlBuilder
 from .ws.soap_client import SoapClient
+from .ws.sunat_response import SunatResponse
 from .signer.xml_signer import XmlSigner
 from .validator.error_code_provider import ErrorCodeProviderInterface
 
@@ -73,30 +74,20 @@ class See:
         if self.xml_builder:
             self.xml_builder.update_options(self.builder_options)
     
-    def set_certificate(self, certificate: str) -> None:
+    def set_certificate(self, certificate: str, password: Optional[str] = None) -> None:
         """
         Set digital certificate for XML signing.
         
         Args:
             certificate: Certificate content or path
+            password: Certificate password (optional)
         """
         if self.xml_signer:
-            self.xml_signer.set_certificate(certificate)
+            self.xml_signer.set_certificate(certificate, password)
     
-    def set_credentials(self, user: str, password: str) -> None:
+    def set_credentials(self, ruc: str, user: str, password: str) -> None:
         """
-        Set SOAP credentials.
-        
-        Args:
-            user: Username
-            password: Password
-        """
-        if self.soap_client:
-            self.soap_client.set_credentials(user, password)
-    
-    def set_clave_sol(self, ruc: str, user: str, password: str) -> None:
-        """
-        Set Clave SOL credentials for secondary user.
+        Set SOAP credentials with RUC.
         
         Args:
             ruc: Company RUC
@@ -105,6 +96,17 @@ class See:
         """
         if self.soap_client:
             self.soap_client.set_credentials(f"{ruc}{user}", password)
+    
+    def set_clave_sol(self, ruc: str, user: str, password: str) -> None:
+        """
+        Set Clave SOL credentials (alias for set_credentials).
+        
+        Args:
+            ruc: Company RUC
+            user: Username
+            password: Password
+        """
+        self.set_credentials(ruc, user, password)
     
     def set_service(self, service_url: Optional[str]) -> None:
         """
@@ -153,7 +155,7 @@ class See:
             logger.error(f"Error generating signed XML: {e}")
             return None
     
-    def send(self, document: DocumentInterface) -> Optional[Dict[str, Any]]:
+    def send(self, document: DocumentInterface) -> SunatResponse:
         """
         Send document to SUNAT.
         
@@ -161,17 +163,24 @@ class See:
             document: Document to send
             
         Returns:
-            Response dictionary or None if error
+            SunatResponse object
         """
         if not self.soap_client:
             logger.error("SOAP Client not initialized")
-            return None
+            print("SOAP client not initialized")
+            return SunatResponse.create_error("SOAP Client not initialized")
+        
+        # Verificar si el SOAP client está realmente funcional
+        if not hasattr(self.soap_client, 'client') or not self.soap_client.client:
+            logger.error("SOAP Client not properly configured")
+            print("SOAP client not properly configured")
+            return SunatResponse.create_error("SOAP Client not properly configured")
         
         try:
             # Get signed XML
             xml_content = self.get_xml_signed(document)
             if not xml_content:
-                return None
+                return SunatResponse.create_error("Could not generate signed XML")
             
             # Determine filename
             filename = self._get_filename(document)
@@ -179,11 +188,22 @@ class See:
             # Send via SOAP
             response = self.soap_client.send(filename, xml_content)
             
-            return response
+            if response:
+                # Convert dictionary response to SunatResponse
+                return SunatResponse(
+                    success=response.get('success', False),
+                    code=response.get('code'),
+                    description=response.get('description'),
+                    error=response.get('error'),
+                    cdr_response=response.get('cdr_response'),
+                    ticket=response.get('ticket')
+                )
+            else:
+                return SunatResponse.create_error("No response from SUNAT")
             
         except Exception as e:
             logger.error(f"Error sending document: {e}")
-            return None
+            return SunatResponse.create_error(f"Error sending document: {e}")
     
     def send_xml(self, document_type: str, filename: str, xml_content: str) -> Optional[Dict[str, Any]]:
         """

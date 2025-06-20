@@ -14,15 +14,15 @@ class Client(BaseModel):
     Migrated from packages/core/src/Core/Model/Client/Client.php
     """
     
-    tipo_doc: Optional[str] = Field(alias="tipoDoc")
-    num_doc: Optional[str] = Field(alias="numDoc")
-    rzn_social: Optional[str] = Field(alias="rznSocial")
+    tipo_doc: Optional[str] = Field(default=None, alias="tipoDoc")
+    num_doc: Optional[str] = Field(default=None, alias="numDoc")
+    rzn_social: Optional[str] = Field(default=None, alias="rznSocial")
     address: Optional[Address] = None
     email: Optional[str] = None
     telephone: Optional[str] = None
     
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True  # Updated for Pydantic V2
         
     def get_tipo_doc(self) -> Optional[str]:
         return self.tipo_doc

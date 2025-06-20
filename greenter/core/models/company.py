@@ -23,7 +23,7 @@ class Address(BaseModel):
     cod_local: Optional[str] = Field(default="0000", alias="codLocal")
     
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         
     def get_ubigueo(self) -> Optional[str]:
         return self.ubigueo
@@ -89,14 +89,14 @@ class Company(BaseModel):
     """
     
     ruc: Optional[str] = None
-    razon_social: Optional[str] = Field(alias="razonSocial")
-    nombre_comercial: Optional[str] = Field(alias="nombreComercial")
+    razon_social: Optional[str] = Field(default=None, alias="razonSocial")
+    nombre_comercial: Optional[str] = Field(default=None, alias="nombreComercial")
     address: Optional[Address] = None
     email: Optional[str] = None
     telephone: Optional[str] = None
     
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         
     def get_ruc(self) -> Optional[str]:
         return self.ruc

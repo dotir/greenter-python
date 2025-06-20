@@ -206,7 +206,7 @@ class XmlBuilder:
         return obj
     
     def _get_invoice_template(self) -> str:
-        """Get basic invoice template."""
+        """Get complete invoice template with all SUNAT required elements."""
         return '''<?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
          xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
@@ -223,20 +223,58 @@ class XmlBuilder:
     <cbc:CustomizationID>2.0</cbc:CustomizationID>
     <cbc:ID>{{ doc.serie }}-{{ doc.correlativo }}</cbc:ID>
     <cbc:IssueDate>{{ doc.fechaEmision | date }}</cbc:IssueDate>
-    <cbc:InvoiceTypeCode>{{ doc.tipoDoc }}</cbc:InvoiceTypeCode>
-    <cbc:DocumentCurrencyCode>{{ doc.tipoMoneda or "PEN" }}</cbc:DocumentCurrencyCode>
+    <cbc:InvoiceTypeCode listID="0101">{{ doc.tipoDoc or "01" }}</cbc:InvoiceTypeCode>
+    {% if doc.fecVencimiento %}<cbc:DueDate>{{ doc.fecVencimiento | date }}</cbc:DueDate>{% endif %}
+    <cbc:DocumentCurrencyCode listID="ISO 4217 Alpha">{{ doc.tipoMoneda or "PEN" }}</cbc:DocumentCurrencyCode>
+    {% if doc.tipoOperacion %}<cbc:LineCountNumeric>{{ doc.details|length if doc.details else 0 }}</cbc:LineCountNumeric>{% endif %}
+    
+    {% if doc.legends %}
+    {% for legend in doc.legends %}
+    <cbc:Note languageLocaleID="1000">{{ legend.value }}</cbc:Note>
+    {% endfor %}
+    {% endif %}
     
     {% if doc.company %}
     <cac:AccountingSupplierParty>
         <cac:Party>
             <cac:PartyIdentification>
-                <cbc:ID schemeID="6">{{ doc.company.ruc }}</cbc:ID>
+                <cbc:ID schemeID="6" schemeName="Documento de Identidad" schemeAgencyName="PE:SUNAT" schemeURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo06">{{ doc.company.ruc }}</cbc:ID>
             </cac:PartyIdentification>
             <cac:PartyName>
-                <cbc:Name>{{ doc.company.razonSocial }}</cbc:Name>
+                <cbc:Name><![CDATA[{{ doc.company.nombreComercial or doc.company.razonSocial }}]]></cbc:Name>
             </cac:PartyName>
+            {% if doc.company.address %}
+            <cac:PostalAddress>
+                <cbc:ID schemeAgencyName="PE:INEI" schemeName="Ubigeos">{{ doc.company.address.ubigueo }}</cbc:ID>
+                <cbc:AddressTypeCode listAgencyName="PE:SUNAT" listName="Establecimientos anexos">0000</cbc:AddressTypeCode>
+                <cbc:CitySubdivisionName>{{ doc.company.address.urbanizacion or "" }}</cbc:CitySubdivisionName>
+                <cbc:CityName>{{ doc.company.address.provincia }}</cbc:CityName>
+                <cbc:CountrySubentity>{{ doc.company.address.departamento }}</cbc:CountrySubentity>
+                <cbc:District>{{ doc.company.address.distrito }}</cbc:District>
+                <cac:AddressLine>
+                    <cbc:Line><![CDATA[{{ doc.company.address.direccion }}]]></cbc:Line>
+                </cac:AddressLine>
+                <cac:Country>
+                    <cbc:IdentificationCode listID="ISO 3166-1" listAgencyName="United Nations Economic Commission for Europe" listName="Country">PE</cbc:IdentificationCode>
+                </cac:Country>
+            </cac:PostalAddress>
+            {% endif %}
             <cac:PartyLegalEntity>
-                <cbc:RegistrationName>{{ doc.company.razonSocial }}</cbc:RegistrationName>
+                <cbc:RegistrationName><![CDATA[{{ doc.company.razonSocial }}]]></cbc:RegistrationName>
+                <cac:RegistrationAddress>
+                    <cbc:ID schemeAgencyName="PE:INEI" schemeName="Ubigeos">{{ doc.company.address.ubigueo if doc.company.address else "150101" }}</cbc:ID>
+                    <cbc:AddressTypeCode listAgencyName="PE:SUNAT" listName="Establecimientos anexos">0000</cbc:AddressTypeCode>
+                    <cbc:CitySubdivisionName>{{ doc.company.address.urbanizacion if doc.company.address else "" }}</cbc:CitySubdivisionName>
+                    <cbc:CityName>{{ doc.company.address.provincia if doc.company.address else "LIMA" }}</cbc:CityName>
+                    <cbc:CountrySubentity>{{ doc.company.address.departamento if doc.company.address else "LIMA" }}</cbc:CountrySubentity>
+                    <cbc:District>{{ doc.company.address.distrito if doc.company.address else "LIMA" }}</cbc:District>
+                    <cac:AddressLine>
+                        <cbc:Line><![CDATA[{{ doc.company.address.direccion if doc.company.address else "DIRECCION NO ESPECIFICADA" }}]]></cbc:Line>
+                    </cac:AddressLine>
+                    <cac:Country>
+                        <cbc:IdentificationCode listID="ISO 3166-1" listAgencyName="United Nations Economic Commission for Europe" listName="Country">PE</cbc:IdentificationCode>
+                    </cac:Country>
+                </cac:RegistrationAddress>
             </cac:PartyLegalEntity>
         </cac:Party>
     </cac:AccountingSupplierParty>
@@ -246,16 +284,91 @@ class XmlBuilder:
     <cac:AccountingCustomerParty>
         <cac:Party>
             <cac:PartyIdentification>
-                <cbc:ID schemeID="{{ doc.client.tipoDoc }}">{{ doc.client.numDoc }}</cbc:ID>
+                <cbc:ID schemeID="{{ doc.client.tipoDoc }}" schemeName="Documento de Identidad" schemeAgencyName="PE:SUNAT" schemeURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo06">{{ doc.client.numDoc }}</cbc:ID>
             </cac:PartyIdentification>
             <cac:PartyLegalEntity>
-                <cbc:RegistrationName>{{ doc.client.rznSocial }}</cbc:RegistrationName>
+                <cbc:RegistrationName><![CDATA[{{ doc.client.rznSocial }}]]></cbc:RegistrationName>
+                {% if doc.client.address %}
+                <cac:RegistrationAddress>
+                    <cbc:ID schemeAgencyName="PE:INEI" schemeName="Ubigeos">{{ doc.client.address.ubigueo }}</cbc:ID>
+                    <cbc:CitySubdivisionName>{{ doc.client.address.urbanizacion or "" }}</cbc:CitySubdivisionName>
+                    <cbc:CityName>{{ doc.client.address.provincia }}</cbc:CityName>
+                    <cbc:CountrySubentity>{{ doc.client.address.departamento }}</cbc:CountrySubentity>
+                    <cbc:District>{{ doc.client.address.distrito }}</cbc:District>
+                    <cac:AddressLine>
+                        <cbc:Line><![CDATA[{{ doc.client.address.direccion }}]]></cbc:Line>
+                    </cac:AddressLine>
+                    <cac:Country>
+                        <cbc:IdentificationCode listID="ISO 3166-1" listAgencyName="United Nations Economic Commission for Europe" listName="Country">PE</cbc:IdentificationCode>
+                    </cac:Country>
+                </cac:RegistrationAddress>
+                {% endif %}
             </cac:PartyLegalEntity>
         </cac:Party>
     </cac:AccountingCustomerParty>
     {% endif %}
     
-    <!-- Invoice lines would go here -->
+    {% if doc.details %}
+    {% for detail in doc.details %}
+    <cac:InvoiceLine>
+        <cbc:ID>{{ loop.index }}</cbc:ID>
+        <cbc:InvoicedQuantity unitCode="{{ detail.unidad or 'NIU' }}" unitCodeListID="UN/ECE rec 20" unitCodeListAgencyName="United Nations Economic Commission for Europe">{{ detail.cantidad | currency }}</cbc:InvoicedQuantity>
+        <cbc:LineExtensionAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ detail.mtoValorVenta | currency }}</cbc:LineExtensionAmount>
+        <cac:PricingReference>
+            <cac:AlternativeConditionPrice>
+                <cbc:PriceAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ detail.mtoPrecioUnitario | currency }}</cbc:PriceAmount>
+                <cbc:PriceTypeCode listName="Tipo de Precio" listAgencyName="PE:SUNAT" listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo16">01</cbc:PriceTypeCode>
+            </cac:AlternativeConditionPrice>
+        </cac:PricingReference>
+        {% if detail.tipAfeIgv %}
+        <cac:TaxTotal>
+            <cbc:TaxAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ detail.igv | currency }}</cbc:TaxAmount>
+            <cac:TaxSubtotal>
+                <cbc:TaxableAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ detail.mtoBaseIgv | currency }}</cbc:TaxableAmount>
+                <cbc:TaxAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ detail.igv | currency }}</cbc:TaxAmount>
+                <cac:TaxCategory>
+                    <cbc:Percent>{{ detail.porcentajeIgv | currency }}</cbc:Percent>
+                    <cbc:TaxExemptionReasonCode listAgencyName="PE:SUNAT" listName="Afectacion del IGV" listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo07">{{ detail.tipAfeIgv }}</cbc:TaxExemptionReasonCode>
+                    <cac:TaxScheme>
+                        <cbc:ID schemeID="UN/ECE 5153" schemeAgencyID="6">1000</cbc:ID>
+                        <cbc:Name>IGV</cbc:Name>
+                        <cbc:TaxTypeCode>VAT</cbc:TaxTypeCode>
+                    </cac:TaxScheme>
+                </cac:TaxCategory>
+            </cac:TaxSubtotal>
+        </cac:TaxTotal>
+        {% endif %}
+        <cac:Item>
+            <cbc:Description><![CDATA[{{ detail.descripcion }}]]></cbc:Description>
+            <cac:SellersItemIdentification>
+                <cbc:ID>{{ detail.codProducto }}</cbc:ID>
+            </cac:SellersItemIdentification>
+        </cac:Item>
+        <cac:Price>
+            <cbc:PriceAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ detail.mtoValorUnitario | currency }}</cbc:PriceAmount>
+        </cac:Price>
+    </cac:InvoiceLine>
+    {% endfor %}
+    {% endif %}
+    
+    <cac:TaxTotal>
+        <cbc:TaxAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ doc.mtoIGV | currency }}</cbc:TaxAmount>
+        {% if doc.mtoOperGravadas and doc.mtoOperGravadas > 0 %}
+        <cac:TaxSubtotal>
+            <cbc:TaxableAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ doc.mtoOperGravadas | currency }}</cbc:TaxableAmount>
+            <cbc:TaxAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ doc.mtoIGV | currency }}</cbc:TaxAmount>
+            <cac:TaxCategory>
+                <cbc:Percent>18.00</cbc:Percent>
+                <cbc:TaxExemptionReasonCode listAgencyName="PE:SUNAT" listName="Afectacion del IGV" listURI="urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo07">10</cbc:TaxExemptionReasonCode>
+                <cac:TaxScheme>
+                    <cbc:ID schemeID="UN/ECE 5153" schemeAgencyID="6">1000</cbc:ID>
+                    <cbc:Name>IGV</cbc:Name>
+                    <cbc:TaxTypeCode>VAT</cbc:TaxTypeCode>
+                </cac:TaxScheme>
+            </cac:TaxCategory>
+        </cac:TaxSubtotal>
+        {% endif %}
+    </cac:TaxTotal>
     
     <cac:LegalMonetaryTotal>
         <cbc:LineExtensionAmount currencyID="{{ doc.tipoMoneda or 'PEN' }}">{{ doc.mtoOperGravadas | currency }}</cbc:LineExtensionAmount>
